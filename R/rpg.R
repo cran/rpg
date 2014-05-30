@@ -10,8 +10,8 @@
 #' \tabular{ll}{
 #' Package: \tab rpg\cr
 #' Type: \tab Package\cr
-#' Version: \tab 1.1\cr
-#' Date: \tab 2014-7-28\cr
+#' Version: \tab 1.2\cr
+#' Date: \tab 2014-8-22\cr
 #' License: \tab GPL \cr
 #' }
 #' The main functions are \code{connect}, which establishes a connection,
@@ -49,6 +49,10 @@ NULL
 #' or use named arguments. The names of the arguments will be used
 #' as keywords and their values as values.
 #' 
+#' If a password was required but not provided, \code{connect} will
+#' will open a dialog and prompt for a password. The connection is
+#' then re-tried and the status returned.
+#' 
 #' @note Do not open a connection and then fork the R
 #' process. The behavior will be unpredictable. It is perfectly
 #' acceptable however to call \code{connect} within each
@@ -84,7 +88,17 @@ connect = function(dbname, ...)
   keywords = names(values)
   if ( is.null(keywords) || "" %in% keywords )
     stop("all arguments must be named")
-  connect_(keywords, as.character(values))
+  status = connect_(keywords, as.character(values))
+  if ( status == "CONNECTION_BAD" &&
+       get_conn_info("password.needed") &&
+       interactive() )
+  {
+     pw = get_pw()
+     keywords = c(keywords, "password")
+     values = c(values, pw)
+     return(connect_(keywords, as.character(values)))
+  }
+  return(status)
 }
 
 #' @details \code{fetch} returns the result of a query as a data frame. If
@@ -152,21 +166,22 @@ execute = function(...)
 #' 
 #' There is no way to direclty enter a database password. If one is required,
 #' you can use a \href{http://www.postgresql.org/docs/9.1/static/libpq-pgpass.html}{password file}
-#'or \code{\link{set_conn_defaults}}. Note that neither solution
-#' is very secure, especially \code{\link{set_conn_defaults}} which will
-#' assign your password to an environment variable.
+#'or \code{\link{set_conn_defaults}}.
 #' 
 #' Unfortunately it is probably impossible to enable GNU readline support
 #' so for example up-arrow will recall your R commands, not the psql
 #' commands entered. You can always call psql from a terminal.
 #' 
 #' @author Timothy H. Keitt
+#'
+#' @seealso \code{\link{set_default_password}}
 #' 
 #' @export
 psql = function(psql_opts = "")
 {
   psql_path = Sys.which("psql")
   if ( nchar(psql_path) == 0 ) stop("psql not found")
+  psql_path = proc_psql_passwd(psql_path)
   psql_opts = proc_psql_opts(psql_opts)
   con = pipe(paste(psql_path, psql_opts))
   on.exit(close(con))
@@ -485,9 +500,12 @@ print.pg.trace.dump = function(x, ...)
 #' 
 #' @param sql any valid query returning rows
 #' @param by how many rows to return each iteration
+#' @param pars optional query parameters
 #' 
 #' @details This function generates an interator object that can be used with
-#' the \code{foreach-package}. It is possible to use the
+#' the \code{foreach-package}.
+#' 
+#' It is possible to use the
 #' \code{\%dopar\%} operator as shown in the example below. You must
 #' establish a connection to the database on each node and in your current
 #' session because the call to \code{cursor} requires it. Note that the
@@ -517,7 +535,7 @@ print.pg.trace.dump = function(x, ...)
 #' write_table(mtcars, row_names = "id", pkey = "id", overwrite = TRUE)
 #' 
 #' # expand rows to columns 8 rows at a time
-#' x = foreach(i = cursor("SELECT * FROM mtcars", 8),
+#' x = foreach(i = cursor("SELECT * FROM mtcars", by = 8),
 #'             .combine = rbind) %do% { i$mpg }
 #' print(x, digits = 2)
 #'         
@@ -549,23 +567,24 @@ print.pg.trace.dump = function(x, ...)
 #'  row.names(x) = x$rows
 #'  x$rows = NULL
 #'  print(noquote(x))
+#'  
+#'  clusterEvalQ(cl, rollback())
 #'  stopCluster(cl)
 #' }
 #' 
 #' #cleanup
-#' rollback()
 #' disconnect()
 #' system("dropdb rpgtesting")}
 #' 
-#' @seealso \code{foreach}, \code{\link{rollback}}
+#' @seealso \code{foreach}, \code{\link{rollback}}, \code{\link{query}}
 #' 
 #' @author Timothy H. Keitt
 #' @export
-cursor = function(sql, by = 1)
+cursor = function(sql, by = 1, pars = NULL)
 {
   check_transaction();
   cname = unique_name();
-  execute("DECLARE", cname, "CURSOR FOR", sql)
+  query(paste("DECLARE", cname, "NO SCROLL CURSOR FOR", sql), pars)
   f = function()
   {
     res = fetch(paste("FETCH", by, "FROM", cname))
@@ -573,7 +592,8 @@ cursor = function(sql, by = 1)
     if ( length(res) < 1 ) stop("StopIteration")
     return(res)
   }
-  structure(list(nextElem = f), class = c('cursor', 'abstractiter', 'iter'))
+  structure(list(nextElem = f, cursor_name = cname),
+            class = c('cursor', 'abstractiter', 'iter'))
 }
 
 #' @param x parameter values
@@ -582,9 +602,6 @@ cursor = function(sql, by = 1)
 execute_prepared = function(x, name = "")
 {
   x = as.matrix(x)
-  cols = num_prepared_params(name)
-  rows = ceiling(length(x) / cols)
-  dim(x) = c(rows, cols)
   storage.mode(x) = "character"
   execute_prepared_(x, name)
 }
@@ -639,6 +656,20 @@ set_conn_defaults = function(...)
   if ( length(x) ) do.call("Sys.setenv", x)
 }
 
+#' @param password the password
+#' @details \code{set_default_password} will query for a password (if not supplied)
+#' and set the \code{PGPASSWORD} environment variable accordingly. This can be used
+#' with \code{\link{psql}} and \code{\link{copy_to}}.
+#' @rdname connection-utils
+#' @export
+set_default_password = function(password = NULL)
+{
+  if ( is.null(password) )
+    password = get_pw()
+  set_conn_defaults(password = password)
+  invisible()
+}
+
 #' @details \code{reset_conn_defaults} unsets all environment variables returned
 #' by \code{get_conn_defaults(all = TRUE)}.
 #' 
@@ -682,6 +713,8 @@ reset_conn_defaults = function()
 #' data in small bits.
 #' 
 #' @author Timothy H. Keitt
+#' 
+#' @seealso \code{\link{set_default_password}}
 #' 
 #' @examples
 #' \dontrun{
@@ -1001,4 +1034,25 @@ retrieve_image = function(imagename = "rpgimage", schemaname = "rpgstow")
               tablename = imagename,
               schemaname = schemaname)
   do.call("retrieve", args, envir = globalenv())
+}
+
+#' @param schemaname install in this schema
+#' @details \code{enable_postgis} will attempt to install the postgis
+#' extension in the named schema. The default search path is altered to
+#' include the new schema.
+#' @rdname misc
+#' @export
+enable_postgis = function(schemaname = "postgis")
+{
+  sp = savepoint()
+  on.exit(rollback(sp))
+  execute("CREATE SCHEMA", schemaname)
+  execute("SET search_path TO", schemaname)
+  execute("CREATE EXTENSION postgis")
+  execute("SET search_path TO default")
+  dpath = fetch("SHOW search_path")[[1]]
+  if ( ! grepl(schemaname, strsplit(dpath, ", ")) )
+    execute("ALTER DATABASE", get_conn_info("dbname"),
+            "SET search_path TO", dpath, ", ", schemaname)
+  on.exit(commit(sp))
 }

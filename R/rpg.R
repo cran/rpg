@@ -10,8 +10,8 @@
 #' \tabular{ll}{
 #' Package: \tab rpg\cr
 #' Type: \tab Package\cr
-#' Version: \tab 1.0\cr
-#' Date: \tab 2013-6-4\cr
+#' Version: \tab 1.1\cr
+#' Date: \tab 2014-7-28\cr
 #' License: \tab GPL \cr
 #' }
 #' The main functions are \code{connect}, which establishes a connection,
@@ -53,12 +53,6 @@ NULL
 #' process. The behavior will be unpredictable. It is perfectly
 #' acceptable however to call \code{connect} within each
 #' forked instance.
-#' 
-#' Be careful with \code{ping} as it will attempt to connect to
-#' the database server on a remote host, which might not be
-#' appreciated by a remote administator. Also, \code{ping} may
-#' seem to hang for a long time. It is just polling the connection
-#' until it times out.
 #' 
 #' @return
 #' \code{connect} returns one of:

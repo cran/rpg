@@ -1,7 +1,7 @@
-2cd25b6bb4f7077f41f65f3a81398801 *DESCRIPTION
+4d3eb525113f13e1a0cec17869fe415b *DESCRIPTION
 a8044dd59f98666936cc66051e9c6869 *NAMESPACE
 deaf25a4398743d6c201843fe7f48d63 *R/RcppExports.R
-7e63a9e9ff06bbd1de503581fce7afe5 *R/rpg.R
+4c35bd4a4c6bb35c429324eb83b9a062 *R/rpg.R
 aeef743dd0aa5ace048e84345995b772 *R/utils.R
 0f0a16cc99c4e5a1f15f94019701e851 *cleanup
 ab956b997b3dd67e9784449765cc51bc *configure
@@ -9,14 +9,14 @@ ab956b997b3dd67e9784449765cc51bc *configure
 d41d8cd98f00b204e9800998ecf8427e *configure.win
 dae78135e6e500834eb89c7a29f3ae55 *man/async.Rd
 27417e93f4aee269df2ed3723a88929f *man/connection-utils.Rd
-8f333f9b008d67c57e18dc05c9b83ce0 *man/connection.Rd
+e0c06221fdbab5cab48c940f4e343c21 *man/connection.Rd
 c660962499a57955003b21f6676114d2 *man/copy.Rd
 3ddf4f7ede26b8d114691580deef44fb *man/cursor.Rd
 4806d597b58f5e3a21448ff3c6cfd18c *man/misc.Rd
 cec2b37fcdfae9a7a09f1777fca08efe *man/prepare.Rd
 1a01665ee4359388fef4ed8f36164676 *man/psql.Rd
 b0a8ee1c1d7f4c6c96b744231ac5db06 *man/query.Rd
-50f3468d88fd26c6d1b6ba349db0e92a *man/rpg-package.Rd
+eeae89c4c37450930d691058e17d821e *man/rpg-package.Rd
 02c68da47793f1faeb80a991f62fb173 *man/stack.Rd
 0b0b9bd99658ddaf33d2c598200b5132 *man/stow.Rd
 a609e3cf25e67a5b413ff6f58883eff4 *man/table-info.Rd
@@ -125,5 +125,5 @@ cfed432d1e862194c9d7d4ad3825152c *src/libpq/wininclude/netdb.h
 ee8cd495cd23d4dec2eefbdc537f33f4 *src/libpq/wininclude/pwd.h
 d982865355149572df8b37929da4894a *src/libpq/wininclude/sys/socket.h
 328dc7600d5a2acd6b82acc37cb6b7ce *src/libpq/wininclude/sys/wait.h
-6aca2bd1685bc5f4da0266906b331593 *src/rpg.cpp
-0c01e58295e627c32b36671146e8b3ed *src/rpg.h
+85ddcad0e3350ad37dea92991f85efd3 *src/rpg.cpp
+57de8149eb20f866b476c4da0867099f *src/rpg.h

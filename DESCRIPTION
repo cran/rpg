@@ -1,8 +1,8 @@
 Package: rpg
 Type: Package
-Title: Easy interface to advanced PostgreSQL features
-Version: 1.2
-Date: 2014-05-30
+Title: Easy Interface to Advanced PostgreSQL Features
+Version: 1.4
+Date: 2015-02-21
 Author: Timothy H. Keitt
 Maintainer: Timothy H. Keitt <tkeitt@gmail.com>
 Description: Allows ad hoc queries and reading and
@@ -27,7 +27,7 @@ Note: The files configure.in, cleanup, Makevars.in and Makevars.win are
         their copyright and license.
 Repository: CRAN
 Repository/R-Forge/Project: rpg
-Repository/R-Forge/Revision: 23
-Repository/R-Forge/DateTimeStamp: 2014-08-29 20:24:00
-Date/Publication: 2014-09-02 06:14:13
-Packaged: 2014-08-29 22:15:07 UTC; rforge
+Repository/R-Forge/Revision: 28
+Repository/R-Forge/DateTimeStamp: 2015-02-21 17:25:43
+Date/Publication: 2015-02-22 08:24:06
+Packaged: 2015-02-21 17:45:15 UTC; rforge

@@ -1,7 +1,7 @@
 #ifndef __RPG_H__
 #define __RPG_H__
 
-#include <libpq-fe.h>
+#include "libpq-fe.h"
 
 #include <Rcpp.h>
 using namespace Rcpp;
@@ -9,13 +9,20 @@ using namespace Rcpp;
 #include <RApiSerializeAPI.h>
 
 #include <cstring>
+#include <vector>
+#include <map>
 
 static PGconn* conn = NULL;
 static PGresult* res = NULL;
 static const char* tracefname = NULL;
 static std::FILE* tracef = NULL;
 
+bool echo = false;
+
 static std::vector<PGconn*> conn_stack;
+
+typedef std::map<Oid, SEXP> format_map_t;
+static format_map_t format_map;
 
 static void cancel_()
 {
@@ -271,7 +278,17 @@ static Date fetch_date(const int row = 0, const int col = 0)
 static SEXP fetch_column(const int col = 0)
 {
   int nrow = PQntuples(res);
-  switch ( PQftype(res, col) )
+  Oid ftype = PQftype(res, col);
+  format_map_t::iterator i = format_map.find(ftype);
+  if (i != format_map.end())
+  {
+    CharacterVector out(nrow);
+    for ( int row = 0; row != nrow; ++row )
+      out[row] = fetch_string(row, col);
+    Function f = as<Function>(i->second);
+    return f(out);
+  }
+  switch (ftype)
   {
     case 16:
     {

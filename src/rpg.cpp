@@ -52,14 +52,8 @@ CharacterVector ping(const char* opts = "")
   return ping_status_string(opts);
 }
 
-//' @details \code{disconnect} will free any query results as well
-//' as clean up the connection data. It is called in the pakcage
-//' \code{\link{.Last.lib}} function when exiting \code{R}.
-//' 
-//' @export disconnect
-//' @rdname connection
 // [[Rcpp::export]]
-void disconnect()
+void disconnect_()
 {
   clear_conn();
 }
@@ -181,7 +175,7 @@ IntegerMatrix get_tuple_info()
 //' 
 //' @examples
 //' \dontrun{
-//' system("createdb rpgtesting")
+//' createdb("rpgtesting")
 //' connect("rpgtesting")
 //' begin()
 //' execute("DROP SCHEMA IF EXISTS rpgtesting CASCADE")
@@ -196,7 +190,7 @@ IntegerMatrix get_tuple_info()
 //' query_error()
 //' rollback()
 //' disconnect()
-//' system("dropdb rpgtesting")}
+//' dropdb("rpgtesting")}
 //' 
 //' @rdname query
 //' @export query
@@ -208,6 +202,7 @@ CharacterVector query(const char* sql = "", SEXP pars = R_NilValue)
     set_res(PQexec(conn, sql));
   else
     exec_params(sql, pars);
+  if (echo) Rcout << sql << std::endl;
   return result_status();
 }
 
@@ -274,14 +269,14 @@ List fetch_dataframe()
 //' 
 //' @examples
 //' \dontrun{
-//' system("createdb rpgtesting")
+//' createdb("rpgtesting")
 //' connect("rpgtesting")
 //' trace_conn()
 //' list_tables()
 //' dump_conn_trace(n = 40)
 //' untrace_conn(remove = TRUE)
 //' disconnect()
-//' system("dropdb rpgtesting")}
+//' dropdb("rpgtesting")}
 //' @rdname tracing
 //' @export
 // [[Rcpp::export]]
@@ -364,7 +359,7 @@ List get_conn_defaults(const bool all = false)
 //' @examples
 //' \dontrun{
 //' # try connecting to default database
-//' system("createdb rpgtesting")
+//' createdb("rpgtesting")
 //' connect("rpgtesting")
 //' begin()
 //' 
@@ -380,7 +375,7 @@ List get_conn_defaults(const bool all = false)
 //' # cleanup
 //' rollback()
 //' disconnect()
-//' system("dropdb rpgtesting")}
+//' dropdb("rpgtesting")}
 //' 
 //' @rdname misc
 //' @export
@@ -653,7 +648,7 @@ List show_conn_stack()
 //' @examples
 //' \dontrun{
 //' # create a database
-//' system("createdb rpgtesting")
+//' createdb("rpgtesting")
 //' connect("rpgtesting")
 //' begin()
 //' 
@@ -730,7 +725,7 @@ List show_conn_stack()
 //' # cleanup
 //' rollback()
 //' disconnect()
-//' system("dropdb rpgtesting")} 
+//' dropdb("rpgtesting")} 
 //' 
 //' @export
 //' @rdname async
@@ -830,3 +825,23 @@ List fetch_stowed(const char* sql, const char* par)
   return out;
 }
 
+//' @param pgoid the PostgreSQL type Oid
+//' @param f a function
+//' @details
+//' The function f must accept a vector of character values and return
+//' a vector of values formated appropriately.
+//' @rdname format-for-send
+//' @export
+// [[Rcpp::export]]
+void register_return_formatter(int pgoid, Function f)
+{
+  format_map[static_cast<Oid>(pgoid)] = wrap(f);
+}
+
+//' @rdname misc
+//' @export
+// [[Rcpp::export]]
+void toggle_echo()
+{
+  echo = !echo;
+}

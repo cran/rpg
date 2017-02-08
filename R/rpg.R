@@ -10,8 +10,8 @@
 #' \tabular{ll}{
 #' Package: \tab rpg\cr
 #' Type: \tab Package\cr
-#' Version: \tab 1.4\cr
-#' Date: \tab 2015-2-21\cr
+#' Version: \tab 1.5\cr
+#' Date: \tab 2016-4-15\cr
 #' License: \tab GPL \cr
 #' }
 #' The main functions are \code{connect}, which establishes a connection,
@@ -77,29 +77,38 @@ NULL
 #' 
 #' @export connect
 #' @rdname connection
-connect = function(dbname, ...)
-{
-  if ( missing(dbname) )
+connect = function(dbname, ...){
+  if (missing(dbname))
     values = list(...)
   else
     values = list(dbname = dbname, ...)
-  if ( length(values) == 0 )
-    return(connect_(character(0), character(0)))
-  keywords = names(values)
-  if ( is.null(keywords) || "" %in% keywords )
-    stop("all arguments must be named")
-  status = connect_(keywords, as.character(values))
-  if ( status == "CONNECTION_BAD" &&
-       get_conn_info("password.needed") &&
-       interactive() )
-  {
+  status = if (length(values) == 0){
+    connect_(character(0), character(0))}
+  else{
+    keywords = names(values)
+    if (is.null(keywords) || "" %in% keywords)
+      stop("all arguments must be named")
+    connect_(keywords, as.character(values))}
+  if (status == "CONNECTION_BAD" &&
+      get_conn_info("password.needed") &&
+       interactive()){
      pw = get_pw()
      keywords = c(keywords, "password")
      values = c(values, pw)
-     return(connect_(keywords, as.character(values)))
-  }
+     status = connect_(keywords, as.character(values))}
+  if (status == "CONNECTION_OK") set_prompt()
   return(status)
 }
+
+#' @details \code{disconnect} will free any query results as well
+#' as clean up the connection data. It is called in the pakcage
+#' \code{\link{.Last.lib}} function when exiting \code{R}.
+#' 
+#' @export disconnect
+#' @rdname connection
+disconnect = function(){
+  disconnect_()
+  set_prompt()}
 
 #' @details \code{fetch} returns the result of a query as a data frame. If
 #' \code{sql} is \code{NULL} or empty, then an attempt will be made to retrieve
@@ -112,10 +121,10 @@ connect = function(dbname, ...)
 #' @export
 fetch = function(sql = "", pars = NULL)
 {
-  if ( is.null(sql) || nchar(sql) < 1 )
+  if (is.null(sql) || nchar(sql) < 1)
     return(fetch_dataframe())
   res = query(sql, pars)
-  if ( res == "PGRES_TUPLES_OK" )
+  if (res == "PGRES_TUPLES_OK")
     fetch_dataframe()
   else res
 }
@@ -132,12 +141,12 @@ fetch = function(sql = "", pars = NULL)
 execute = function(...)
 {
   status = query(paste(...))
-  if ( status == "PGRES_BAD_RESPONSE" )
+  if (status == "PGRES_BAD_RESPONSE")
     stop("Fatal protocol error; check server")
-  if ( status == "PGRES_FATAL_ERROR" )
+  if (status == "PGRES_FATAL_ERROR")
   {
     em = query_error()
-    if ( nchar(em) ) stop(em)
+    if (nchar(em)) stop(em)
     stop("Fatal error")
   }
   return(status)
@@ -180,7 +189,7 @@ execute = function(...)
 psql = function(psql_opts = "")
 {
   psql_path = Sys.which("psql")
-  if ( nchar(psql_path) == 0 ) stop("psql not found")
+  if (nchar(psql_path) == 0) stop("psql not found")
   psql_path = proc_psql_passwd(psql_path)
   psql_opts = proc_psql_opts(psql_opts)
   con = pipe(paste(psql_path, psql_opts))
@@ -188,9 +197,9 @@ psql = function(psql_opts = "")
   repeat
   {
     inp = readline("psql:> ")
-    if ( nchar(inp) && inp != "\\q" )
+    if (nchar(inp) && inp != "\\q")
     {
-      if ( inp %in% c("\\e", "\\ef") )
+      if (inp %in% c("\\e", "\\ef"))
         cat("Cannot evoke editor\n")
       else
         writeLines(inp, con)
@@ -213,7 +222,7 @@ psql = function(psql_opts = "")
 #' 
 #' @examples
 #' \dontrun{
-#' system("createdb rpgtesting")
+#' createdb("rpgtesting")
 #' connect("rpgtesting")
 #' begin()
 #'  
@@ -224,11 +233,13 @@ psql = function(psql_opts = "")
 #' # get some information
 #' list_tables()
 #' describe_table("mtcars")
+#' list_schema()
+#' list_databases()
 #' 
 #' #cleanup
 #' rollback()
 #' disconnect()
-#' system("dropdb rpgtesting")}
+#' dropdb("rpgtesting")}
 #' 
 #' @rdname table-info
 #' @export
@@ -252,9 +263,9 @@ list_tables = function(only.names = TRUE)
                AND n.nspname !~ \'^pg_toast\'
                AND pg_catalog.pg_table_is_visible(c.oid)
                ORDER BY 1,2")
-  if ( length(res) < 1 ) return(res)
-  if ( inherits(res, "pq.status") ) return(res)
-  if ( only.names ) return(res[[2]])
+  if (length(res) < 1) return(res)
+  if (inherits(res, "pq.status")) return(res)
+  if (only.names) return(res[[2]])
   return(res)
 }
 
@@ -274,7 +285,7 @@ describe_table = function(tablename, schemaname = NULL)
           column_default as default
         FROM
           information_schema.columns"
-  if ( is.null(schemaname) )
+  if (is.null(schemaname))
   {
     where = "WHERE
               table_name = $1"
@@ -292,6 +303,39 @@ describe_table = function(tablename, schemaname = NULL)
               ordinal_position"
     fetch(paste(sql, where, order), c(schemaname, tablename))
   }
+}
+
+#' @rdname table-info
+#' @export
+list_schema = function(only.names = TRUE)
+{
+  res = fetch("SELECT n.nspname AS \"Name\",
+               pg_catalog.pg_get_userbyid(n.nspowner) AS \"Owner\"
+               FROM pg_catalog.pg_namespace n
+               WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+               ORDER BY 1")
+  if (length(res) < 1) return(res)
+  if (inherits(res, "pq.status")) return(res)
+  if (only.names) return(res[[1]])
+  return(res)
+}
+
+#' @rdname table-info
+#' @export
+list_databases = function(only.names = TRUE)
+{
+  res = fetch("SELECT d.datname as \"Name\",
+               pg_catalog.pg_get_userbyid(d.datdba) as \"Owner\",
+               pg_catalog.pg_encoding_to_char(d.encoding) as \"Encoding\",
+               d.datcollate as \"Collate\",
+               d.datctype as \"Ctype\",
+               pg_catalog.array_to_string(d.datacl, E'\n') AS \"Access privileges\"
+               FROM pg_catalog.pg_database d
+               ORDER BY 1")
+  if (length(res) < 1) return(res)
+  if (inherits(res, "pq.status")) return(res)
+  if (only.names) return(res[[1]])
+  return(res)
 }
 
 #' PostgreSQL data frame IO
@@ -343,7 +387,7 @@ describe_table = function(tablename, schemaname = NULL)
 #' @examples
 #' \dontrun{
 #' # connect using defaults
-#' system("createdb rpgtesting")
+#' createdb("rpgtesting")
 #' connect("rpgtesting")
 #' begin()
 #'  
@@ -372,7 +416,7 @@ describe_table = function(tablename, schemaname = NULL)
 #' #cleanup
 #' rollback()
 #' disconnect()
-#' system("dropdb rpgtesting")}
+#' dropdb("rpgtesting")}
 #' 
 #' @rdname table-io
 #' @export
@@ -384,19 +428,19 @@ write_table = function(x,
                        types = NULL,
                        overwrite = FALSE)
 {
-  if ( missing(tablename) )
+  if (missing(tablename))
     tablename = deparse(substitute(x))
   x = as.data.frame(x, stringsAsFactors = FALSE)
-  if ( prod(dim(x)) == 0 ) stop("Empty input")
+  if (prod(dim(x)) == 0) stop("Empty input")
   tableid = format_tablename(tablename, schemaname)
   x = handle_row_names(x, row_names)
   colnames = make.unique(names(x), "")
-  if ( is.null(types) )
+  if (is.null(types))
     types = sapply(x, pg_type)
   else
     types = rep(types, ncol(x))
-  if ( !is.null(pkey) )
-    if ( pkey %in% colnames )
+  if (!is.null(pkey))
+    if (pkey %in% colnames)
     {
       i = which(colnames == pkey)
       types[i] = paste(types[i], "primary key")
@@ -419,17 +463,17 @@ write_table = function(x,
   colnames = as.csv(colnames)
   sp = savepoint()
   on.exit(rollback(sp))
-  if ( overwrite ) execute("DROP TABLE IF EXISTS", tableid)
+  if (overwrite) execute("DROP TABLE IF EXISTS", tableid)
   sql = paste("CREATE TABLE", tableid, "(", types, ")")
   status = query(sql)
-  if ( status == "PGRES_COMMAND_OK" )
+  if (status == "PGRES_COMMAND_OK")
   {
     sqlpars = paste0("$", 1:ncol(x))
     sqlpars = as.csv(sqlpars)
     sql = paste("INSERT INTO", tableid, "(", colnames, ")")
     sql = paste(sql, "VALUES (", sqlpars, ")")
     estatus = prepare(sql)(x)
-    if ( estatus == "PGRES_FATAL_ERROR" ) return(estatus)
+    if (estatus == "PGRES_FATAL_ERROR") return(estatus)
     on.exit(commit(sp))
   }
   return(status)
@@ -453,12 +497,12 @@ read_table = function(tablename,
                      deparse(substitute(tablename)))
   tableid = format_tablename(tablename, schemaname)
   sql = paste("select", what, "from", tableid)
-  if ( !is.null(limit) ) sql = paste(sql, "limit", limit)
+  if (!is.null(limit)) sql = paste(sql, "limit", limit)
   res = fetch(sql)
-  if ( inherits(res, "pq.status" ) ) return(res) 
-  if ( pkey_to_row_names && is.null(row_names) )
+  if (inherits(res, "pq.status" )) return(res) 
+  if (pkey_to_row_names && is.null(row_names))
     row_names = primary_key_name(tableid)
-  if ( !is.null(row_names) )
+  if (!is.null(row_names))
   {
     row.names(res) = res[[row_names]]
     res[[row_names]] = NULL
@@ -477,7 +521,7 @@ read_table = function(tablename,
 dump_conn_trace = function(warn = FALSE, ...)
 {
   con = trace_filename()
-  if ( is.null(con) || file.access(con, 4) == -1 ) return(NULL)
+  if (is.null(con) || file.access(con, 4) == -1) return(NULL)
   out = readLines(con, warn = warn, ...)
   class(out) = "pg.trace.dump"
   return(out)
@@ -518,11 +562,11 @@ print.pg.trace.dump = function(x, ...)
 #' @examples
 #' \dontrun{
 #' # example requires foreach
-#' if ( ! require(foreach, quietly = TRUE) )
+#' if (! require(foreach, quietly = TRUE))
 #'  stop("This example requires the \'foreach\' package")
 #'
 #' # connect using defaults
-#' system("createdb rpgtesting")
+#' createdb("rpgtesting")
 #' connect("rpgtesting")
 #' begin()
 #'  
@@ -536,7 +580,7 @@ print.pg.trace.dump = function(x, ...)
 #' print(x, digits = 2)
 #'         
 #' # parallel example
-#' if ( require(doParallel, quietly = TRUE) )
+#' if (require(doParallel, quietly = TRUE))
 #' {
 #'  # make the cluster
 #'  cl = makeCluster(2)
@@ -570,7 +614,7 @@ print.pg.trace.dump = function(x, ...)
 #' 
 #' #cleanup
 #' disconnect()
-#' system("dropdb rpgtesting")}
+#' dropdb("rpgtesting")}
 #' 
 #' @seealso \code{foreach}, \code{\link{rollback}}, \code{\link{query}}
 #' 
@@ -584,8 +628,8 @@ cursor = function(sql, by = 1, pars = NULL)
   f = function()
   {
     res = fetch(paste("FETCH", by, "FROM", cname))
-    if ( inherits(res, "pq.status") ) stop(res)
-    if ( length(res) < 1 ) stop("StopIteration")
+    if (inherits(res, "pq.status")) stop(res)
+    if (length(res) < 1) stop("StopIteration")
     return(res)
   }
   structure(list(nextElem = f, cursor_name = cname),
@@ -630,7 +674,7 @@ cursor = function(sql, by = 1, pars = NULL)
 #' @examples
 #' \dontrun{
 #' # try connecting to default database
-#' system("createdb rpgtesting")
+#' createdb("rpgtesting")
 #' connect("rpgtesting")
 #' begin()
 #'
@@ -652,31 +696,32 @@ cursor = function(sql, by = 1, pars = NULL)
 #' # cleanup
 #' rollback()
 #' disconnect()
-#' system("dropdb rpgtesting")}
+#' dropdb("rpgtesting")}
 #'
 #' @rdname prepare
 #' @export
 prepare = function(sql)
 {
-  stmt = unique_statement_id()
-  status = prepare_(sql, stmt)
-  if ( status != "PGRES_COMMAND_OK" ) stop(query_error())
+  sid = unique_statement_id()
+  status = prepare_(sql, sid)
+  if (status != "PGRES_COMMAND_OK") stop(query_error())
   function(x = NULL)
   {
-    npars = num_prepared_params(stmt)
-    if ( is.null(x) || npars == 0 )
+    npars = num_prepared_params(sid)
+    if (is.null(x) || npars == 0)
     {
-      execute("EXECUTE", stmt)
+      execute("EXECUTE", sid)
     }
     else
     {
       x = matrix(format_for_send(x), ncol = npars)
-      execute_prepared_(x, stmt)
+      execute_prepared_(x, sid)
     }
   }
 }
 
 #' @param what the fields to return or all if NULL
+#' @param hide_password if true, do not reveal password used
 #' @details \code{get_conn_info} returns a list containing
 #' information about the current connection. For
 #' readability, it will print as though it is a matrix. If
@@ -688,11 +733,13 @@ prepare = function(sql)
 #' @return get_conn_info: a list of values
 #' @export get_conn_info
 #' @rdname connection-utils
-get_conn_info = function(what = NULL)
+get_conn_info = function(what = NULL, hide_password = TRUE)
 {
   res = get_conn_info_()
-  if ( is.null(what) ) return(res)
-  if ( length(what) == 1 ) return(res[[what]])
+  if (hide_password && is.null(what))
+    res$password.used = gsub(".", "*", res$password.used)
+  if (is.null(what)) return(res)
+  if (length(what) == 1) return(res[[what]])
   return(res[what])
 }
 
@@ -715,15 +762,15 @@ set_conn_defaults = function(...)
     stop("all arguments must be named")
   # end copy
   defs = get_conn_defaults(all = TRUE)
-  for ( i in seq(along = nm) )
+  for (i in seq(along = nm))
   {
     envvar = defs$envvar[defs$keyword == nm[i]]
-    if ( length(envvar) && nchar(envvar) )
+    if (length(envvar) && nchar(envvar))
       names(x)[i] = envvar
     else
       x[i] = NULL
   }
-  if ( length(x) ) do.call("Sys.setenv", x)
+  if (length(x)) do.call("Sys.setenv", x)
 }
 
 #' @param password the password
@@ -734,7 +781,7 @@ set_conn_defaults = function(...)
 #' @export
 set_default_password = function(password = NULL)
 {
-  if ( is.null(password) )
+  if (is.null(password))
     password = get_pw()
   set_conn_defaults(password = password)
   invisible()
@@ -748,8 +795,8 @@ set_default_password = function(password = NULL)
 reset_conn_defaults = function()
 {
   var = get_conn_defaults(all = TRUE)$envvar
-  for ( v in var )
-    if ( length(v) && nchar(v) )
+  for (v in var)
+    if (length(v) && nchar(v))
       Sys.unsetenv(v)
 }
 
@@ -789,7 +836,7 @@ reset_conn_defaults = function()
 #' @examples
 #' \dontrun{
 #' # example requires hflights
-#' if ( ! require(hflights, quietly = TRUE) )
+#' if (! require(hflights, quietly = TRUE))
 #'  stop("This example requires the \'hflights\' package")
 #'
 #' # big dataset
@@ -811,19 +858,19 @@ reset_conn_defaults = function()
 #' 
 #' rollback()
 #' disconnect()
-#' system(paste("dropdb rpgtesting"))}
+#' dropdb("rpgtesting")}
 #' 
 #' @rdname copy
 #' @export
 copy_from = function(what, psql_opts = "")
 {
   psql_path = Sys.which("psql")
-  if ( nchar(psql_path) == 0 ) stop("psql not found")
+  if (nchar(psql_path) == 0) stop("psql not found")
   psql_opts = proc_psql_opts(psql_opts)
-  if ( grepl("select", tolower(what)) ) what = paste("(", what, ")")
+  if (grepl("select", tolower(what))) what = paste("(", what, ")")
   sql = paste("COPY", what, "TO stdout CSV NULL \'NA\' HEADER")
   con = pipe(paste(psql_path, psql_opts, "-c", dquote_esc(sql)))
-  read.csv(con, header = TRUE, as.is = TRUE)
+  utils::read.csv(con, header = TRUE, as.is = TRUE)
 }
 
 #' @param x a data frame
@@ -839,12 +886,12 @@ copy_to = function(x, tablename,
                    psql_opts = "")
 {
   psql_path = Sys.which("psql")
-  if ( nchar(psql_path) == 0 ) stop("psql not found")
-  if ( missing(tablename) )
+  if (nchar(psql_path) == 0) stop("psql not found")
+  if (missing(tablename))
     tablename = deparse(substitute(x))
   tableid = format_tablename(tablename, schemaname)
   sql = paste("COPY", tableid, "FROM stdin CSV NULL \'NA\' HEADER")
-  if ( ! append )
+  if (! append)
   {
     colnames = make.unique(names(x), "")
     types = sapply(x, pg_type)
@@ -855,7 +902,7 @@ copy_to = function(x, tablename,
   sql = paste("SET client_min_messages TO warning;", sql)
   psql_opts = proc_psql_opts(psql_opts)
   con = pipe(paste(psql_path, psql_opts, "-c", dquote_esc(sql)))
-  write.csv(x, con, row.names = FALSE)
+  utils::write.csv(x, con, row.names = FALSE)
 }
 
 #' Transaction support
@@ -878,7 +925,7 @@ copy_to = function(x, tablename,
 #' 
 #' @examples
 #' \dontrun{
-#' system("createdb rpgtesting")
+#' createdb("rpgtesting")
 #' connect("rpgtesting")
 #' begin()
 #' sp1 = savepoint()
@@ -903,7 +950,7 @@ copy_to = function(x, tablename,
 #' rollback(sp1)
 #' rollback()
 #' disconnect()
-#' system("dropdb rpgtesting")}
+#' dropdb("rpgtesting")}
 #' 
 #' @rdname transactions
 #' @export
@@ -914,7 +961,7 @@ begin = function() query("BEGIN")
 #' @export
 commit = function(savepoint = NULL)
 {
-  if ( is.null(savepoint) )
+  if (is.null(savepoint))
     query("COMMIT")
   else
     savepoint$commit()
@@ -924,7 +971,7 @@ commit = function(savepoint = NULL)
 #' @export
 rollback = function(savepoint = NULL)
 {
-  if ( is.null(savepoint) )
+  if (is.null(savepoint))
     query("ROLLBACK")
   else
     savepoint$rollback()
@@ -935,7 +982,7 @@ rollback = function(savepoint = NULL)
 #' @export
 savepoint = function()
 {
-  if ( check_transaction() )
+  if (check_transaction())
   {
     spname = unique_name()
     execute("SAVEPOINT", spname)
@@ -977,7 +1024,7 @@ savepoint = function()
 #' 
 #' @examples
 #' \dontrun{
-#' system("createdb rpgtesting")
+#' createdb("rpgtesting")
 #' connect("rpgtesting")
 #' begin()
 #'
@@ -1007,7 +1054,7 @@ savepoint = function()
 #' 
 #' rollback()
 #' disconnect()
-#' system("dropdb rpgtesting")}
+#' dropdb("rpgtesting")}
 #' 
 #' @rdname stow
 #' @export
@@ -1016,7 +1063,7 @@ stow = function(..., tablename = "rpgstow", schemaname = "rpgstow")
   objlist = list(...)
   objnames = names(objlist)
   objsyms = as.character(substitute(list(...)))[-1L]
-  if ( is.null(objnames) ) objnames = rep("", length(objlist))
+  if (is.null(objnames)) objnames = rep("", length(objlist))
   i = which(objnames == "")
   objlist[i] = mget(objsyms[i], ifnotfound = objlist[i], envir = parent.frame())
   objnames[i] = objsyms[i]
@@ -1025,12 +1072,12 @@ stow = function(..., tablename = "rpgstow", schemaname = "rpgstow")
   sp = savepoint()
   on.exit(rollback(sp))
   check_stow(tablename, schemaname)
-  for ( i in seq(along = objlist) )
+  for (i in seq(along = objlist))
   {
     sql = paste("INSERT INTO", tableid,
                 "(objname, object) VALUES (\'", objnames[i], "\', $1)")
     status = exec_param_serialize(sql, objlist[[i]])
-    if ( status == "PGRES_FATAL_ERROR" ) return(status)
+    if (status == "PGRES_FATAL_ERROR") return(status)
   }
   on.exit(commit(sp))
   invisible()
@@ -1040,8 +1087,9 @@ stow = function(..., tablename = "rpgstow", schemaname = "rpgstow")
 #' @export
 list_stowed = function(tablename = "rpgstow", schemaname = "rpgstow")
 {
+  check_stow(tablename, schemaname)
   tableid = format_tablename(tablename, schemaname)
-  fetch(paste("SELECT objname FROM", tableid))
+  fetch(paste("SELECT objname, stamp FROM", tableid))
 }
 
 #' @param objnames a character vector with object names or regular expressions
@@ -1059,8 +1107,8 @@ retrieve = function(objnames, tablename = "rpgstow", schemaname = "rpgstow")
 {
   env = parent.frame()
   tableid = format_tablename(tablename, schemaname)
-  sql = paste("SELECT * FROM", tableid, "WHERE objname ~ $1")
-  for ( n in objnames )
+  sql = paste("SELECT objname, object FROM", tableid, "WHERE objname ~ $1")
+  for (n in objnames)
   {
     res = fetch_stowed(sql, n)
     lapply(names(res), function(n) assign(n, res[[n]], envir = env))
@@ -1074,10 +1122,8 @@ delete_stowed = function(objnames, tablename = "rpgstow", schemaname = "rpgstow"
 {
   sp = savepoint(); on.exit(rollback(sp))
   tableid = format_tablename(tablename, schemaname)
-  status = prepare(paste("DELETE FROM", tableid, "WHERE objname ~ $1"))
-  if ( status == "PGRES_FATAL_ERROR" ) return(status)
-  status = execute_prepared_(matrix(objnames, ncol = 1))
-  if ( status == "PGRES_FATAL_ERROR" ) return(status)
+  sql = paste("DELETE FROM", tableid, "WHERE objname ~ $1")
+  prepare(sql)(objnames)
   on.exit(commit(sp))
 }
 
@@ -1090,6 +1136,7 @@ delete_stowed = function(objnames, tablename = "rpgstow", schemaname = "rpgstow"
 stow_image = function(imagename = "rpgimage", schemaname = "rpgstow")
 {
   sp = savepoint(); on.exit(rollback(sp))
+  check_stow(imagename, schemaname)
   delete_stowed('.*', imagename, schemaname)
   args = as.list(ls(envir = globalenv(), all.names = TRUE))
   args$tablename = imagename
@@ -1110,21 +1157,62 @@ retrieve_image = function(imagename = "rpgimage", schemaname = "rpgstow")
 
 #' @param schemaname install in this schema
 #' @details \code{enable_postgis} will attempt to install the postgis
-#' extension in the named schema. The default search path is altered to
-#' include the new schema.
+#' extension in the named schema using \code{enable_extension}.
 #' @rdname misc
 #' @export
 enable_postgis = function(schemaname = "postgis")
+  enable_extension("postgis", schemaname)
+
+#' @param extension the extension name
+#' @details \code{enable_extension} will attempt to install the
+#' extension in the named schema. The default search path is altered to
+#' include the new schema.
+#'
+#' @rdname misc
+#' @export
+enable_extension = function(extension, schemaname = extension)
 {
   sp = savepoint()
   on.exit(rollback(sp))
-  execute("CREATE SCHEMA", schemaname)
-  execute("SET search_path TO", schemaname)
-  execute("CREATE EXTENSION postgis")
-  execute("SET search_path TO default")
-  dpath = fetch("SHOW search_path")[[1]]
-  if ( ! grepl(schemaname, strsplit(dpath, ", ")) )
-    execute("ALTER DATABASE", get_conn_info("dbname"),
-            "SET search_path TO", dpath, ", ", schemaname)
+  opath = get_path()
+  create_schema(schemaname)
+  set_path(schemaname)
+  execute("CREATE EXTENSION", extension)
+  if (!path_contains(schemaname, default = TRUE))
+    append_path(schemaname, default = TRUE)
+  set_path(opath)
   on.exit(commit(sp))
+}
+
+#' @param name the service name
+#' @details
+#' The \code{make_service} function will write the current connection
+#' settings to a special set of files recognized by PostgreSQL's libpq.
+#' After calling this function, you will be able to reconnect using the
+#' service name as in \code{connect(service=name)}. If the connection
+#' requires a password, that will be saved as well. This is not likely
+#' to work on Windows since the file locations are different between
+#' Unix-like and Windows. File a bug with the libpq folks if that
+#' upsets you.
+#' @rdname connection
+#' @export
+make_service = function(name)
+{
+  ci = get_conn_info(hide_password = FALSE)
+  fp = file.path(Sys.getenv("HOME"), ".pg_service.conf")
+  cat(paste0("[", name, "]\n"), file = fp, append = TRUE)
+  with(ci, {
+    cat(paste0("dbname=", dbname, "\n"), file = fp, append = TRUE)
+    cat(paste0("user=", user, "\n"), file = fp, append = TRUE)
+    if (!is.null(host)) cat(paste0("host=", host, "\n"), file = fp, append = TRUE)
+    cat(paste0("port=", port, "\n"), file = fp, append = TRUE)
+    if (nzchar(options)) cat(paste0("options=", options, "\n"), file = fp, append = TRUE)
+    if (password.supplied)
+    {
+      fp = file.path(Sys.getenv("HOME"), ".pgpass")
+      entry = paste0(c(host, port, dbname, user, password.used), collapse = ":")
+      cat(paste0(entry, "\n"), file = fp, append = TRUE)
+      Sys.chmod(fp, "0600")
+    }
+  })
 }

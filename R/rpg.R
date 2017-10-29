@@ -11,7 +11,7 @@
 #' Package: \tab rpg\cr
 #' Type: \tab Package\cr
 #' Version: \tab 1.5\cr
-#' Date: \tab 2016-4-15\cr
+#' Date: \tab 2017-2-8\cr
 #' License: \tab GPL \cr
 #' }
 #' The main functions are \code{connect}, which establishes a connection,
@@ -27,7 +27,7 @@
 #' @keywords package
 #' @import Rcpp
 #' @import RApiSerialize
-#' @useDynLib rpg
+#' @useDynLib rpg, .registration = TRUE
 NULL
 
 #' PostgreSQL connection
@@ -78,14 +78,15 @@ NULL
 #' @export connect
 #' @rdname connection
 connect = function(dbname, ...){
+  on.exit(set_prompt())
   if (missing(dbname))
     values = list(...)
   else
     values = list(dbname = dbname, ...)
+  keywords = names(values)
   status = if (length(values) == 0){
     connect_(character(0), character(0))}
   else{
-    keywords = names(values)
     if (is.null(keywords) || "" %in% keywords)
       stop("all arguments must be named")
     connect_(keywords, as.character(values))}
@@ -96,7 +97,6 @@ connect = function(dbname, ...){
      keywords = c(keywords, "password")
      values = c(values, pw)
      status = connect_(keywords, as.character(values))}
-  if (status == "CONNECTION_OK") set_prompt()
   return(status)
 }
 
@@ -107,8 +107,8 @@ connect = function(dbname, ...){
 #' @export disconnect
 #' @rdname connection
 disconnect = function(){
-  disconnect_()
-  set_prompt()}
+  on.exit(set_prompt())
+  disconnect_()}
 
 #' @details \code{fetch} returns the result of a query as a data frame. If
 #' \code{sql} is \code{NULL} or empty, then an attempt will be made to retrieve
@@ -348,6 +348,7 @@ list_databases = function(only.names = TRUE)
 #' @param row_names a column name to write row names
 #' @param schemaname the schema name
 #' @param types a list of valid PostgreSQL type names
+#' @param append if true, append rows to existing table
 #' @param overwrite if true, destroy existing table with the same name
 #' 
 #' @details
@@ -426,6 +427,7 @@ write_table = function(x,
                        row_names = NULL,
                        schemaname = NULL,
                        types = NULL,
+                       append = FALSE,
                        overwrite = FALSE)
 {
   if (missing(tablename))
@@ -464,19 +466,20 @@ write_table = function(x,
   sp = savepoint()
   on.exit(rollback(sp))
   if (overwrite) execute("DROP TABLE IF EXISTS", tableid)
-  sql = paste("CREATE TABLE", tableid, "(", types, ")")
-  status = query(sql)
-  if (status == "PGRES_COMMAND_OK")
+  if (overwrite || (!append))
   {
-    sqlpars = paste0("$", 1:ncol(x))
-    sqlpars = as.csv(sqlpars)
-    sql = paste("INSERT INTO", tableid, "(", colnames, ")")
-    sql = paste(sql, "VALUES (", sqlpars, ")")
-    estatus = prepare(sql)(x)
-    if (estatus == "PGRES_FATAL_ERROR") return(estatus)
-    on.exit(commit(sp))
+    sql = paste("CREATE TABLE", tableid, "(", types, ")")
+    status = query(sql)
+    if (status != "PGRES_COMMAND_OK")
+      return(status)
   }
-  return(status)
+  sqlpars = paste0("$", 1:ncol(x))
+  sqlpars = as.csv(sqlpars)
+  sql = paste("INSERT INTO", tableid, "(", colnames, ")")
+  sql = paste(sql, "VALUES (", sqlpars, ")")
+  estatus = prepare(sql)(x)
+  on.exit(commit(sp))
+  return(estatus)
 }
 
 #' @param what a vector of column names
@@ -629,7 +632,7 @@ cursor = function(sql, by = 1, pars = NULL)
   {
     res = fetch(paste("FETCH", by, "FROM", cname))
     if (inherits(res, "pq.status")) stop(res)
-    if (length(res) < 1) stop("StopIteration")
+    if (nrow(res) < 1) stop("StopIteration")
     return(res)
   }
   structure(list(nextElem = f, cursor_name = cname),

@@ -1,14 +1,8 @@
-.onLoad = function(libname, pkgname)
-{
-  connect()
-  set_prompt()
-}
+.onLoad = function(libname, pkgname) { return(invisible()) }
 
-.onUnload = function(libpath)
-{
-  clean_up_all()
-  set_prompt()
-}
+.onUnload = function(libpath){
+  clean_up_all(); set_prompt()
+  return(invisible())}
 
 set_prompt = function(){
   if(get_conn_info("status.ok"))
@@ -95,7 +89,7 @@ print.message = function(x, terminate = "\n")
 is_non_empty_string = function(x)
 {
   if (is.null(x)) return(FALSE)
-  if (nchar(x) < 1) return(FALSE)
+  if (!any(nzchar(x))) return(FALSE)
   return(TRUE)
 }
 
@@ -147,20 +141,13 @@ handle_row_names = function(a, b)
 
 primary_key_name = function(tablename)
 {
-  unlist(fetch("SELECT               
-                  pg_attribute.attname as pkey
-                FROM
-                  pg_index, pg_class, pg_attribute 
-                WHERE
-                  pg_class.oid = $1::regclass
-                AND
-                  indrelid = pg_class.oid
-                AND
-                  pg_attribute.attrelid = pg_class.oid
-                AND 
-                  pg_attribute.attnum = any(pg_index.indkey)
-                AND
-                  indisprimary", tablename))
+  unlist(fetch("SELECT pg_attribute.attname as pkey
+                FROM   pg_index, pg_class, pg_attribute 
+                WHERE  pg_class.oid = $1::regclass
+                AND    indrelid = pg_class.oid
+                AND    pg_attribute.attrelid = pg_class.oid
+                AND    pg_attribute.attnum = any(pg_index.indkey)
+                AND    indisprimary", tablename))
 }
 
 unique_name = function()
